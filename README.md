@@ -7,7 +7,7 @@ which was hold in the winter term 2020/21.
 
 ## Usage
 Most of the exercises are jupyter notebooks.
-Best practice to run this notebooks is:
+Best practice to run a ```jupyter-notebook``` is:
 * Install [```anaconda```](https://docs.anaconda.com/anaconda/install/)
 * Create a conda environment for this repository, or use existing environment.
 This can be done automatically, by executing
@@ -16,7 +16,7 @@ This can be done automatically, by executing
   ````
   The anaconda [cheat sheet](https://docs.conda.io/projects/conda/en/4.6.0/_downloads/52a95608c49671267e40c689e0bc00ca/conda-cheatsheet.pdf) 
   might be helpful.
-* Last part start the ```jupyter-notebook``` with
+* Last part start the ```jupyter-notebook``` application with
   ````shell script
   $ jupyter-notebook
   ````
