@@ -13,6 +13,7 @@ import os
 from scipy.linalg import solve
 from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import spsolve, inv
+from skimage.io import imread
 
 
 def conv(value):
@@ -72,25 +73,39 @@ def apply_dirichlet_conditions(A, indices):
     return csc_matrix(A_dense)
 
 
-def f_factory(f0, frequency=1, amplitude=0.01):
-    force_fcn = lambda t: f0 * amplitude * np.sin(2 * np.pi * frequency * t)
+def f_factory(f0, frequency=1, amplitude=0.01, V=None):
+    if V is not None:
+        force_fcn = lambda t: np.transpose(V) @ f0 * amplitude * np.sin(2 * np.pi * frequency * t)
+    else:
+        force_fcn = lambda t: f0 * amplitude * np.sin(2 * np.pi * frequency * t)
     return force_fcn
 
 
 def ode_f(t, x, M, K, f_fcn):
     u, dudt = x.reshape((2, -1))
 
-    dxdt = np.concatenate((dudt, spsolve(M, f_fcn(t).A[:, 0] - K @ u)))
+    dxdt = np.concatenate((dudt, spsolve(M, f_fcn(t) - K @ u)))
 
     return dxdt
 
-
-# def ode_jac(t, x, M_inv, K):
-#     order = K.shape[0]
-#     upper = (np.zeros((order, order)), np.ones((order, order)))
-#     lower = (-M_inv @ K, np.zeros((order, order)))
+# def ode_f(t, x, M, K):
+#     u, dudt = x.reshape((2, -1))
 #
-#     return np.vstack((np.hstack(upper), np.hstack(lower)))
+#     f = np.zeros(534)
+#     f[65 - 1] = 0.01 * np.sin(2 * np.pi * t)
+#     f[5 - 1] = f[65 - 1]
+#
+#     dxdt = np.concatenate((dudt, spsolve(M, f - K @ u)))
+#
+#     return dxdt
+
+
+
+# def ode_jac(t, x, M, K):
+#     jac = csc_matrix((2 * order, 2 * order))
+#     jac[:order, order:] = np.ones((order, order))
+#     jac[order:, :order] = spsolve(M, K)
+#     return j
 
 
 resources_path = os.path.join('ex02', 'resources')
@@ -107,16 +122,6 @@ K_mat = read_hb_from_mat(K_mat_path, 'K')
 M_mat = read_hb_from_mat(M_mat_path, 'M')
 
 is_equal = np.allclose(K_txt.A, K_mat.A)
-
-# print(f'{K_txt} \n {K_mat}')
-#
-# fig, axes = plt.subplots(1, 2)
-# ax = axes.ravel()
-# ax[0].spy(K_txt)
-# ax[0].set_title("Sparsity of K_txt")
-# ax[1].spy(K_mat)
-# ax[1].set_title("Sparsity of K_mat")
-# plt.show()
 
 ### Apply dirchlet
 # Dirichlet conditions in all directions at nodes 27,28,29,48,49,50.
@@ -136,33 +141,54 @@ M = apply_dirichlet_conditions(M, dirichlet_indices)
 
 order = K.shape[0]
 
-#####
-
-force_indices = np.array([65, 5]) - 1
-
-f = csc_matrix((order, 1))
-f[force_indices] = 100
-
-u_sparse = spsolve(K, f)
-
 ##### e)
 time_domain = [0, 2]
 x0 = np.zeros(2 * order)
 
 force_indices = np.array([65, 5]) - 1
-f0 = csc_matrix((order, 1))
+f0 = np.zeros(order)
 f0[force_indices] = 1
 
-f_fcn = f_factory(f0)
+V_path = os.path.join(resources_path, 'V.mat')
+V = read_mat(V_path)['V']
 
-# M_inv = inv(M)  # scipy.sparse.linalg.inv
+red_order = V.shape[1]
+
+f_fcn = f_factory(f0, 1, 0.01, V)
+
+M_red = np.transpose(V) @ M @ V
+K_red = np.transpose(V) @ K @ V
 
 # jac = csc_matrix((2 * order, 2 * order))
 # jac[:order, order:] = np.ones((order, order))
-# jac[order:, :order] = -M_inv @ K
+# jac[order:, :order] = -spsolve(M, K)
+
+
+t_end = 2
+t_step = 0.01
+t_eval = np.arange(0, t_end + t_step, t_step)
+
+x0_red = np.zeros(2 * red_order)
 
 start_time = time.time()
-ivp_sol = solve_ivp(ode_f, (0, 0.001), x0, method='RK23', args=(M, K, f_fcn))
+ivp_sol = solve_ivp(ode_f, (0, t_end), x0_red, method='RK23', t_eval=t_eval, args=(M_red, K_red, f_fcn))
 end_time = time.time() - start_time
+print(f'Transient problem solved for reduced system in {end_time:.4f}s.')
+
+### plot displacement in x-dir of node 47 over time and compar with png
+png_name = 'full_transient_node_47.png'
+png_path = os.path.join(resources_path, png_name)
+image = imread(png_path)
+
+u_red = V @ ivp_sol.y[:red_order, :]
+
+fig, axes = plt.subplots(figsize=(9, 9), nrows=1, ncols=2,)
+ax = axes.ravel()
+ax[0].plot(t_eval, u_red[63, :])
+ax[0].set_xlim(0.0, 2)
+ax[0].set_title("Reduced System")
+ax[1].imshow(image)
+ax[1].set_title(png_name)
+plt.show()
 
 print('END')
